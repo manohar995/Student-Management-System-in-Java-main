@@ -1,208 +1,266 @@
+package src;
+
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 
-import java.awt.event.*;
-import java.sql.*;
+public class AppGUI extends JFrame {
+    private final JTextField studentIdField = new JTextField(12);
+    private final JTextField firstNameField = new JTextField(12);
+    private final JTextField lastNameField = new JTextField(12);
+    private final JTextField majorField = new JTextField(12);
+    private final JTextField phoneField = new JTextField(12);
+    private final JTextField gpaField = new JTextField(12);
+    private final JTextField dobField = new JTextField(12);
 
-public class AppGUI extends JFrame implements ActionListener {
-    private final JLabel studentIdLabel, firstNameLabel, lastNameLabel, majorLabel, phoneLabel, gpaLabel, dobLabel;
-    private final JTextField studentIdField, firstNameField, lastNameField, majorField, phoneField, gpaField, dobField;
-    private final JButton addButton, displayButton, sortButton, searchButton, modifyButton;
+    private final JButton addButton = new JButton("Add Student");
+    private final JButton displayButton = new JButton("Display All");
+    private final JButton searchButton = new JButton("Search");
+    private final JButton updateButton = new JButton("Update");
+    private final JButton deleteButton = new JButton("Delete");
+    private final JButton clearButton = new JButton("Clear");
 
-    private Statement stmt;
+    private final JTable studentTable = new JTable();
+    private final StudentDAO studentDAO = new StudentDAO();
+    private final Table tableHelper = new Table();
 
     public AppGUI() {
-        JFrame frame = new JFrame("Student Database");
-        JPanel panel = new JPanel();
+        setTitle("Student Management System");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout(12, 12));
+        setSize(1000, 600);
+        setLocationRelativeTo(null);
 
-        // Initialize labels
-        studentIdLabel = new JLabel("Student ID:");
-        firstNameLabel = new JLabel("First Name:");
-        lastNameLabel = new JLabel("Last Name:");
-        majorLabel = new JLabel("Major:");
-        phoneLabel = new JLabel("Phone:");
-        gpaLabel = new JLabel("GPA:");
-        dobLabel = new JLabel("Date of Birth (yyyy-mm-dd):");
+        JPanel formPanel = new JPanel(new GridLayout(0, 2, 10, 10));
+        formPanel.setBorder(BorderFactory.createTitledBorder("Student Details"));
 
-        // Initialize text fields
-        studentIdField = new JTextField(10);
-        firstNameField = new JTextField(10);
-        lastNameField = new JTextField(10);
-        majorField = new JTextField(10);
-        phoneField = new JTextField(10);
-        gpaField = new JTextField(10);
-        dobField = new JTextField(10);
+        formPanel.add(new JLabel("Student ID:"));
+        formPanel.add(studentIdField);
+        formPanel.add(new JLabel("First Name:"));
+        formPanel.add(firstNameField);
+        formPanel.add(new JLabel("Last Name:"));
+        formPanel.add(lastNameField);
+        formPanel.add(new JLabel("Major:"));
+        formPanel.add(majorField);
+        formPanel.add(new JLabel("Phone:"));
+        formPanel.add(phoneField);
+        formPanel.add(new JLabel("GPA:"));
+        formPanel.add(gpaField);
+        formPanel.add(new JLabel("Date of Birth (yyyy-mm-dd):"));
+        formPanel.add(dobField);
 
-        // Initialize buttons
-        addButton = new JButton("Add");
-        displayButton = new JButton("Display");
-        sortButton = new JButton("Sort");
-        searchButton = new JButton("Search");
-        modifyButton = new JButton("Modify");
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+        buttonPanel.add(addButton);
+        buttonPanel.add(displayButton);
+        buttonPanel.add(searchButton);
+        buttonPanel.add(updateButton);
+        buttonPanel.add(deleteButton);
+        buttonPanel.add(clearButton);
 
-        // Add action listeners to buttons
-        addButton.addActionListener(this);
-        displayButton.addActionListener(this);
-        sortButton.addActionListener(this);
-        searchButton.addActionListener(this);
-        modifyButton.addActionListener(this);
+        JPanel topPanel = new JPanel(new BorderLayout(10, 10));
+        topPanel.add(formPanel, BorderLayout.CENTER);
+        topPanel.add(buttonPanel, BorderLayout.SOUTH);
 
-        // Add components to panel
-        panel.add(studentIdLabel);
-        panel.add(studentIdField);
-        panel.add(firstNameLabel);
-        panel.add(firstNameField);
-        panel.add(lastNameLabel);
-        panel.add(lastNameField);
-        panel.add(majorLabel);
-        panel.add(majorField);
-        panel.add(phoneLabel);
-        panel.add(phoneField);
-        panel.add(gpaLabel);
-        panel.add(gpaField);
-        panel.add(dobLabel);
-        panel.add(dobField);
-        panel.add(addButton);
-        panel.add(displayButton);
-        panel.add(sortButton);
-        panel.add(searchButton);
-        panel.add(modifyButton);
+        studentTable.setFillsViewportHeight(true);
+        studentTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JScrollPane tableScrollPane = new JScrollPane(studentTable);
+        tableScrollPane.setBorder(BorderFactory.createTitledBorder("Student Records"));
 
-        // Add panel to frame
-        frame.add(panel);
-        frame.pack();
-        frame.setVisible(true);
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        add(topPanel, BorderLayout.NORTH);
+        add(tableScrollPane, BorderLayout.CENTER);
+
+        addButton.addActionListener(e -> addStudent());
+        displayButton.addActionListener(e -> loadAllStudents());
+        searchButton.addActionListener(e -> searchStudent());
+        updateButton.addActionListener(e -> updateStudent());
+        deleteButton.addActionListener(e -> deleteStudent());
+        clearButton.addActionListener(e -> clearForm());
+
+        loadAllStudents();
     }
 
-
-    @Override
-    public void actionPerformed(ActionEvent e) {
-        dbConnect db = new dbConnect();
-        Connection conn;
-        try {
-            conn = db.getConnection();
-        } catch (SQLException | ClassNotFoundException ex) {
-            throw new RuntimeException(ex);
+    private void addStudent() {
+        Student student = readStudentFromForm();
+        if (student == null) {
+            return;
         }
+
         try {
-            stmt = conn.createStatement();
-        } catch (SQLException e1) {
-            e1.printStackTrace();
-        }
-        Table tb = new Table();
-        if (e.getSource() == addButton) {
-            // Insert new student into database
-            String sql = "INSERT INTO sdata VALUES('" + studentIdField.getText() + "', '"
-                    + firstNameField.getText() + "', '" + lastNameField.getText() + "', '" + majorField.getText()
-                    + "', '" + phoneField.getText() + "', '" + gpaField.getText() + "', '" + dobField.getText() + "')";
-            try {
-                stmt.executeUpdate(sql);
-                JOptionPane.showMessageDialog(null, "Student added successfully.");
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-        } else if (e.getSource() == displayButton) {
-            // Display all sdata in database
-            String sql = "SELECT * FROM sdata";
-
-            try {
-                ResultSet rs = stmt.executeQuery(sql);
-
-                // Create table to display student data
-                JTable table = new JTable(tb.buildTableModel(rs));
-                JOptionPane.showMessageDialog(null, new JScrollPane(table));
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-        } else if (e.getSource() == sortButton) {
-            // Sort sdata by selected column
-            String[] options = {"First Name", "Last Name", "Major"};
-            int choice = JOptionPane.showOptionDialog(null, "Sort by:", "Sort", JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
-
-            String sql = "";
-            switch (choice) {
-                case 0 -> sql = "SELECT * FROM sdata ORDER BY first_name";
-                case 1 -> sql = "SELECT * FROM sdata ORDER BY last_name";
-                case 2 -> sql = "SELECT * FROM sdata ORDER BY major";
-                default -> {
-                }
-            }
-            try {
-                ResultSet rs = stmt.executeQuery(sql);
-
-                // Create table to display student data
-                JTable table = new JTable(tb.buildTableModel(rs));
-                JOptionPane.showMessageDialog(null, new JScrollPane(table));
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-        } else if (e.getSource() == searchButton) {
-            // Search for student by selected column
-            String[] options = {"Student ID", "Last Name", "Major"};
-            int choice = JOptionPane.showOptionDialog(null, "Search by:", "Search", JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
-
-            String column = "";
-            switch (choice) {
-                case 0 -> column = "student_id";
-                case 1 -> column = "last_name";
-                case 2 -> column = "major";
-                default -> {
-                }
-            }
-
-            String searchTerm = JOptionPane.showInputDialog("Enter search term:");
-
-            String sql = "SELECT * FROM sdata WHERE " + column + " LIKE '%" + searchTerm + "%'";
-
-            try {
-                ResultSet rs = stmt.executeQuery(sql);
-
-                // Create table to display student data
-                JTable table = new JTable(tb.buildTableModel(rs));
-                JOptionPane.showMessageDialog(null, new JScrollPane(table));
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-        } else if (e.getSource() == modifyButton) {
-            // Modify selected student's data
-            String studentId = JOptionPane.showInputDialog("Enter student ID:");
-
-            String sql = "SELECT * FROM sdata WHERE student_id = '" + studentId + "'";
-
-            try {
-                ResultSet rs = stmt.executeQuery(sql);
-
-                if (rs.next()) {
-                    String[] options = {"First Name", "Last Name", "Major", "Phone", "GPA", "Date of Birth"};
-                    int choice = JOptionPane.showOptionDialog(null, "Select field to modify:", "Modify",
-                            JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
-
-                    String column = "";
-                    switch (choice) {
-                        case 0 -> column = "first_name";
-                        case 1 -> column = "last_name";
-                        case 2 -> column = "major";
-                        case 3 -> column = "phone";
-                        case 4 -> column = "gpa";
-                        case 5 -> column = "date_of_birth";
-                        default -> {
-                        }
-                    }
-                    String newValue = JOptionPane.showInputDialog("Enter new value:");
-
-                    sql = "UPDATE sdata SET " + column + " = '" + newValue + "' WHERE student_id = '" + studentId + "'";
-
-                    stmt.executeUpdate(sql);
-                    JOptionPane.showMessageDialog(null, "Student data updated successfully.");
-                } else {
-                    JOptionPane.showMessageDialog(null, "Student not found.");
-                }
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
+            studentDAO.addStudent(student);
+            JOptionPane.showMessageDialog(this, "Student added successfully.");
+            clearForm();
+            loadAllStudents();
+        } catch (Exception ex) {
+            showError("Unable to add student.", ex);
         }
     }
 
+    private void updateStudent() {
+        String studentId = studentIdField.getText().trim();
+        if (studentId.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter a student ID to update.");
+            return;
+        }
+
+        Student student = readStudentFromForm();
+        if (student == null) {
+            return;
+        }
+
+        try {
+            if (!studentDAO.studentExists(studentId)) {
+                JOptionPane.showMessageDialog(this, "Student not found.");
+                return;
+            }
+            studentDAO.updateStudent(studentId, student);
+            JOptionPane.showMessageDialog(this, "Student updated successfully.");
+            clearForm();
+            loadAllStudents();
+        } catch (Exception ex) {
+            showError("Unable to update student.", ex);
+        }
+    }
+
+    private void deleteStudent() {
+        String studentId = studentIdField.getText().trim();
+        if (studentId.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter a student ID to delete.");
+            return;
+        }
+
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Delete student with ID '" + studentId + "'?",
+                "Confirm Delete",
+                JOptionPane.YES_NO_OPTION);
+
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        try {
+            if (!studentDAO.studentExists(studentId)) {
+                JOptionPane.showMessageDialog(this, "Student not found.");
+                return;
+            }
+            studentDAO.deleteStudent(studentId);
+            JOptionPane.showMessageDialog(this, "Student deleted successfully.");
+            clearForm();
+            loadAllStudents();
+        } catch (Exception ex) {
+            showError("Unable to delete student.", ex);
+        }
+    }
+
+    private void loadAllStudents() {
+        try {
+            List<Student> students = studentDAO.getAllStudents();
+            studentTable.setModel(tableHelper.buildTableModel(students));
+        } catch (Exception ex) {
+            showError("Unable to load students.", ex);
+        }
+    }
+
+    private void searchStudent() {
+        String[] searchOptions = {"Student ID", "Last Name", "Major"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Search by:",
+                "Search Student",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                searchOptions,
+                searchOptions[0]);
+
+        if (choice < 0) {
+            return;
+        }
+
+        String searchTerm = JOptionPane.showInputDialog(this, "Enter search value:");
+        if (searchTerm == null || searchTerm.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            List<Student> students = switch (choice) {
+                case 0 -> studentDAO.searchByStudentId(searchTerm.trim());
+                case 1 -> studentDAO.searchByLastName(searchTerm.trim());
+                case 2 -> studentDAO.searchByMajor(searchTerm.trim());
+                default -> List.of();
+            };
+            studentTable.setModel(tableHelper.buildTableModel(students));
+            if (students.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "No matching student found.");
+            }
+        } catch (Exception ex) {
+            showError("Unable to search student.", ex);
+        }
+    }
+
+    private Student readStudentFromForm() {
+        String studentId = studentIdField.getText().trim();
+        String firstName = firstNameField.getText().trim();
+        String lastName = lastNameField.getText().trim();
+        String major = majorField.getText().trim();
+        String phone = phoneField.getText().trim();
+        String gpaText = gpaField.getText().trim();
+        String dobText = dobField.getText().trim();
+
+        if (studentId.isEmpty() || firstName.isEmpty() || lastName.isEmpty() || major.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Student ID, First Name, Last Name, and Major are required.");
+            return null;
+        }
+
+        if (!phone.isEmpty() && !phone.matches("\\d{10,15}")) {
+            JOptionPane.showMessageDialog(this, "Phone number must contain only digits and be 10 to 15 characters long.");
+            return null;
+        }
+
+        double gpa;
+        try {
+            gpa = Double.parseDouble(gpaText);
+            if (gpa < 0 || gpa > 10) {
+                throw new NumberFormatException();
+            }
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "GPA must be a number between 0 and 10.");
+            return null;
+        }
+
+        LocalDate dob;
+        try {
+            dob = LocalDate.parse(dobText);
+        } catch (DateTimeParseException ex) {
+            JOptionPane.showMessageDialog(this, "Date of birth must be in yyyy-mm-dd format.");
+            return null;
+        }
+
+        Student student = new Student();
+        student.setStudentId(studentId);
+        student.setFirstName(firstName);
+        student.setLastName(lastName);
+        student.setMajor(major);
+        student.setPhone(phone);
+        student.setGpa(gpa);
+        student.setDob(dob);
+        return student;
+    }
+
+    private void clearForm() {
+        studentIdField.setText("");
+        firstNameField.setText("");
+        lastNameField.setText("");
+        majorField.setText("");
+        phoneField.setText("");
+        gpaField.setText("");
+        dobField.setText("");
+        studentIdField.requestFocus();
+    }
+
+    private void showError(String message, Exception ex) {
+        JOptionPane.showMessageDialog(this, message + "\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+    }
 }
+
